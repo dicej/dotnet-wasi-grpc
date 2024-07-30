@@ -1,12 +1,15 @@
+using System.Diagnostics;
 using System.Net;
-using System.Net.Sockets;
+using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 public class App {
     public static int Main(string[] args)
     {
-        var task = Run();
+        var task = Run(Int32.Parse(args[0]));
         while (!task.IsCompleted)
         {
             WasiEventLoop.Dispatch();
@@ -20,19 +23,15 @@ public class App {
         return 0;
     }
 
-    private static async Task Run()
+    private static async Task Run(int port)
     {
-        using TcpClient client = new();
-        await client.ConnectAsync(new IPEndPoint(new IPAddress(new byte[] { 127, 0, 0, 1 }), 7532));
-        await using NetworkStream stream = client.GetStream();
+        using var client = new HttpClient();
 
-        await stream.WriteAsync(Encoding.UTF8.GetBytes("hello, world!"));
-        
-        var buffer = new byte[1024];
-        int received = await stream.ReadAsync(buffer);
-
-        var message = Encoding.UTF8.GetString(buffer, 0, received);
-        Console.WriteLine($"Message received: \"{message}\"");
+        var response = await client.GetAsync($"http://127.0.0.1:{port}/hello");
+        response.EnsureSuccessStatusCode();
+        Debug.Assert(4 == response.Content.Headers.ContentLength);
+        Debug.Assert("text/plain".Equals(response.Content.Headers.ContentType));
+        Debug.Assert("hola".Equals(await response.Content.ReadAsStringAsync()));
     }
 }
 
@@ -42,7 +41,7 @@ internal static class WasiEventLoop
     {
         CallDispatch((Thread)null!);
 
-        [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "Dispatch")]
+        [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "DispatchWasiEventLoop")]
         static extern void CallDispatch(Thread t);
     }
 }
